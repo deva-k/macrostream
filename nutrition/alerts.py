@@ -113,17 +113,17 @@ def get_daily_alerts(food_log: list[dict], targets: dict,
     total_carbs  = sum(float(e.get("carbs", 0) or 0) for e in food_log)
 
     # ── Whey protein (dose-dependent IGF-1 risk) ─────────────────────────────
-    whey_g = sum(
-        float(e.get("quantity_g", 0) or 0)
-        for e in food_log
-        if "whey" in str(e.get("food_name", "")).lower()
-    )
+    whey_entries = [e for e in food_log if "whey" in str(e.get("food_name", "")).lower()]
+    whey_g = sum(float(e.get("quantity_g", 0) or 0) for e in whey_entries)
+    whey_sources = list({str(e.get("food_name", "")).title() for e in whey_entries})
     if whey_g > 60:
         alerts.append({"level": "yellow",
-                        "message": f"Whey {whey_g:.0f}g (>2 scoops) — significant IGF-1 elevation; monitor skin closely"})
+                        "message": f"Whey {whey_g:.0f}g (>2 scoops) — significant IGF-1 elevation; monitor skin closely",
+                        "sources": whey_sources})
     elif whey_g > 30:
         alerts.append({"level": "yellow",
-                        "message": f"Whey {whey_g:.0f}g (>1 scoop) — moderate IGF-1 risk; consider plant protein alternatives"})
+                        "message": f"Whey {whey_g:.0f}g (>1 scoop) — moderate IGF-1 risk; consider plant protein alternatives",
+                        "sources": whey_sources})
 
     # ── Full-fat dairy (volume threshold) ────────────────────────────────────
     # Skyr and greek yogurt have lower IGF-1 risk due to straining/fermentation.
@@ -131,33 +131,45 @@ def get_daily_alerts(food_log: list[dict], targets: dict,
     high_risk_dairy = ["milk", "cream", "full-fat yogurt", "whole milk"]
     low_risk_dairy  = ["skyr", "greek yogurt", "yoghurt", "cottage cheese"]
 
-    high_dairy_g = sum(
-        float(e.get("quantity_g", 0) or 0)
-        for e in food_log
+    high_dairy_entries = [
+        e for e in food_log
         if any(t in str(e.get("food_name", "")).lower() for t in high_risk_dairy)
-    )
-    low_dairy_g = sum(
-        float(e.get("quantity_g", 0) or 0)
-        for e in food_log
+    ]
+    low_dairy_entries = [
+        e for e in food_log
         if any(t in str(e.get("food_name", "")).lower() for t in low_risk_dairy)
-    )
+    ]
+    high_dairy_g = sum(float(e.get("quantity_g", 0) or 0) for e in high_dairy_entries)
+    low_dairy_g  = sum(float(e.get("quantity_g", 0) or 0) for e in low_dairy_entries)
 
     if high_dairy_g > 200:
         alerts.append({"level": "yellow",
-                        "message": f"High-lactose dairy {high_dairy_g:.0f}g — IGF-1 pathway; prefer skyr or cottage cheese"})
+                        "message": f"High-lactose dairy {high_dairy_g:.0f}g — IGF-1 pathway; prefer skyr or cottage cheese",
+                        "sources": list({str(e.get("food_name", "")).title() for e in high_dairy_entries})})
     elif low_dairy_g > 300:
         alerts.append({"level": "yellow",
-                        "message": f"Fermented dairy {low_dairy_g:.0f}g > 300g — even low-risk dairy elevates IGF-1 at high volume"})
+                        "message": f"Fermented dairy {low_dairy_g:.0f}g > 300g — even low-risk dairy elevates IGF-1 at high volume",
+                        "sources": list({str(e.get("food_name", "")).title() for e in low_dairy_entries})})
 
     # ── Saturated fat cap ────────────────────────────────────────────────────
     if total_sat_fat > targets.get("sat_fat_cap", 20):
+        sat_sources = sorted(
+            [e for e in food_log if float(e.get("sat_fat", 0) or 0) > 1],
+            key=lambda e: float(e.get("sat_fat", 0) or 0), reverse=True
+        )
         alerts.append({"level": "yellow",
-                        "message": f"Saturated fat {total_sat_fat:.1f}g exceeds 20g cap — mTORC1 activation risk"})
+                        "message": f"Saturated fat {total_sat_fat:.1f}g exceeds 20g cap — mTORC1 activation risk",
+                        "sources": [str(e.get("food_name", "")).title() for e in sat_sources[:4]]})
 
     # ── Omega-6 cap ──────────────────────────────────────────────────────────
     if total_omega6 > targets.get("omega6_cap", 12):
+        o6_sources = sorted(
+            [e for e in food_log if float(e.get("omega6", 0) or 0) > 0.5],
+            key=lambda e: float(e.get("omega6", 0) or 0), reverse=True
+        )
         alerts.append({"level": "yellow",
-                        "message": f"Omega-6 {total_omega6:.1f}g > 12g — add omega-3 sources to restore 4:1 ratio"})
+                        "message": f"Omega-6 {total_omega6:.1f}g > 12g — add omega-3 sources to restore 4:1 ratio",
+                        "sources": [str(e.get("food_name", "")).title() for e in o6_sources[:4]]})
 
     # ── Medium GI carbs (whole-day weighted average) ─────────────────────────
     carb_entries = [
@@ -169,17 +181,25 @@ def get_daily_alerts(food_log: list[dict], targets: dict,
         avg_gi = sum(
             float(e["gi"]) * float(e.get("carbs", 0)) for e in carb_entries
         ) / total_carb_g
+        high_gi_entries = sorted(
+            [e for e in carb_entries if float(e.get("gi", 0)) > 55],
+            key=lambda e: float(e.get("gi", 0)), reverse=True
+        )
+        gi_sources = [str(e.get("food_name", "")).title() for e in high_gi_entries[:4]]
         if avg_gi >= 70:
             alerts.append({"level": "yellow",
-                            "message": f"Average GI {avg_gi:.0f} (high ≥70) — significant insulin + IGF-1 spike"})
+                            "message": f"Average GI {avg_gi:.0f} (high ≥70) — significant insulin + IGF-1 spike",
+                            "sources": gi_sources})
         elif avg_gi > 55:
             alerts.append({"level": "yellow",
-                            "message": f"Average GI {avg_gi:.0f} (medium 56–69) — moderate insulin response, shift to low-GI sources"})
+                            "message": f"Average GI {avg_gi:.0f} (medium 56–69) — moderate insulin response, shift to low-GI sources",
+                            "sources": gi_sources})
 
     # ── Oat milk GI note ─────────────────────────────────────────────────────
     if any("oat milk" in str(e.get("food_name", "")).lower() for e in food_log):
         alerts.append({"level": "yellow",
-                        "message": "Oat milk has medium GI (≈62) — commercial processing hydrolyses starch; prefer almond milk if GI-sensitive"})
+                        "message": "Oat milk has medium GI (≈62) — commercial processing hydrolyses starch; prefer almond milk if GI-sensitive",
+                        "sources": ["Oat Milk"]})
 
     # ── Timing alerts ────────────────────────────────────────────────────────
     if any(
@@ -188,7 +208,8 @@ def get_daily_alerts(food_log: list[dict], targets: dict,
         for e in food_log
     ):
         alerts.append({"level": "yellow",
-                        "message": "Sona Masoori at lunch — better timed post-workout at dinner for glycogen replenishment"})
+                        "message": "Sona Masoori at lunch — better timed post-workout at dinner for glycogen replenishment",
+                        "sources": ["Sona Masoori Rice (Lunch)"]})
 
     if day_type == "rest" and any(
         "sweet potato" in str(e.get("food_name", "")).lower()
@@ -196,16 +217,27 @@ def get_daily_alerts(food_log: list[dict], targets: dict,
         for e in food_log
     ):
         alerts.append({"level": "yellow",
-                        "message": "Sweet potato at lunch on rest day — GI 63; better post-workout timing on training days"})
+                        "message": "Sweet potato at lunch on rest day — GI 63; better post-workout timing on training days",
+                        "sources": ["Sweet Potato (Lunch)"]})
 
     # ── Rest-day caps ─────────────────────────────────────────────────────────
     if day_type == "rest":
         if total_carbs > 200:
+            carb_sources = sorted(
+                [e for e in food_log if float(e.get("carbs", 0) or 0) > 10],
+                key=lambda e: float(e.get("carbs", 0) or 0), reverse=True
+            )
             alerts.append({"level": "yellow",
-                            "message": f"Rest day carbs {total_carbs:.0f}g > 200g — insulin sensitivity is lower; reduce refined carbs"})
+                            "message": f"Rest day carbs {total_carbs:.0f}g > 200g — insulin sensitivity is lower; reduce refined carbs",
+                            "sources": [str(e.get("food_name", "")).title() for e in carb_sources[:4]]})
         if total_cal > 2100:
+            cal_sources = sorted(
+                food_log,
+                key=lambda e: float(e.get("calories", 0) or 0), reverse=True
+            )
             alerts.append({"level": "yellow",
-                            "message": f"Rest day calories {total_cal:.0f} > 2,100 — limited activity; risk of caloric surplus"})
+                            "message": f"Rest day calories {total_cal:.0f} > 2,100 — limited activity; risk of caloric surplus",
+                            "sources": [str(e.get("food_name", "")).title() for e in cal_sources[:4]]})
 
     return alerts
 
@@ -287,12 +319,16 @@ def get_all_alerts(food_log: list[dict], targets: dict,
     """Aggregate all alerts for display on the dashboard."""
     alerts: list[dict] = []
 
-    seen_red: set[str] = set()
+    seen_red: dict[str, list[str]] = {}  # message -> list of food names
     for entry in food_log:
-        for alert in get_food_alerts(entry.get("food_name", "")):
-            if alert["message"] not in seen_red:
-                alerts.append(alert)
-                seen_red.add(alert["message"])
+        food_name = entry.get("food_name", "")
+        for alert in get_food_alerts(food_name):
+            seen_red.setdefault(alert["message"], [])
+            title = food_name.title()
+            if title not in seen_red[alert["message"]]:
+                seen_red[alert["message"]].append(title)
+    for message, sources in seen_red.items():
+        alerts.append({"level": "red", "message": message, "sources": sources})
 
     alerts.extend(get_daily_alerts(food_log, targets, day_type))
     alerts.extend(

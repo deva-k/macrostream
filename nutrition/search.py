@@ -182,6 +182,94 @@ def _lookup_duckduckgo(food_name: str) -> dict | None:
     return None
 
 
+# ── Source: Gemini vision — nutrition label image ─────────────────────────────
+
+_LABEL_PROMPT = """Analyse this nutrition facts label image.
+
+If a serving size is given (e.g. "28g", "1 cup (240 ml)", "2 tbsp"), use it to
+calculate per-100 g values.  If the label already shows per-100 g columns, use
+those directly.
+
+Return ONLY a valid JSON object — no explanation, no markdown:
+{
+  "food_name": "<product name visible on packaging, or 'Scanned food' if not visible>",
+  "serving_size_g": <serving size in grams; use 100 if not determinable>,
+  "calories": <kcal per 100 g>,
+  "protein": <g per 100 g>,
+  "carbs": <total carbohydrates g per 100 g>,
+  "fat": <total fat g per 100 g>,
+  "fibre": <dietary fibre g per 100 g; 0 if not listed>,
+  "sat_fat": <saturated fat g per 100 g; 0 if not listed>,
+  "omega6": 0,
+  "gi": null
+}
+
+Calculation rule: value_per_100g = (value_per_serving / serving_size_g) * 100"""
+
+
+def get_nutrition_from_image(image_bytes: bytes, mime_type: str) -> dict | None:
+    """Extract nutrition facts from a label photo using Gemini vision (free tier).
+
+    Returns the same structure as get_nutrition() — includes _per100_* keys and
+    quantity_g set to the serving size found on the label.
+    Returns None if Gemini is not configured or the image cannot be parsed.
+    """
+    import sys
+    api_key = _secret("GEMINI_API_KEY")
+    if not api_key:
+        return None
+    try:
+        from google import genai
+        from google.genai import types as _gtypes
+
+        client = genai.Client(api_key=api_key)
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=[
+                _gtypes.Part.from_bytes(data=image_bytes, mime_type=mime_type),
+                _LABEL_PROMPT,
+            ],
+        )
+        data = _parse_llm_json(response.text)
+        if not data:
+            return None
+
+        food_name = str(data.get("food_name") or "Scanned food").strip()
+        serving_g = float(data.get("serving_size_g") or 100)
+
+        per100 = {
+            "calories": float(data.get("calories") or 0),
+            "protein":  float(data.get("protein")  or 0),
+            "carbs":    float(data.get("carbs")     or 0),
+            "fat":      float(data.get("fat")       or 0),
+            "fibre":    float(data.get("fibre")     or 0),
+            "sat_fat":  float(data.get("sat_fat")   or 0),
+            "omega6":   float(data.get("omega6")    or 0),
+            "gi":       data.get("gi") or None,
+        }
+
+        result = scale(per100, serving_g)
+        result.update({
+            "food_name": food_name,
+            "quantity_g": serving_g,
+            "source": "label_scan",
+        })
+        result.update({f"_per100_{k}": v for k, v in per100.items()})
+        # Caching is deferred to "Add to Log" so the user's corrected food name is used
+        return result
+
+    except Exception as e:
+        err = str(e)
+        if "RESOURCE_EXHAUSTED" in err or "quota" in err.lower():
+            print(
+                "[macrostream] Gemini quota exhausted during label scan.",
+                file=sys.stderr,
+            )
+        else:
+            print(f"[macrostream] Label scan failed: {e}", file=sys.stderr)
+        return None
+
+
 # ── Main entry point ───────────────────────────────────────────────────────────
 
 def get_nutrition(query: str) -> dict | None:

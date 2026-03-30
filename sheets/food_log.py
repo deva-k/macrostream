@@ -140,9 +140,12 @@ def get_cached_food(food_key: str) -> dict | None:
         return None
     try:
         records = _get_all_records(ws)
+        # Return the LAST match so user-corrected entries take precedence over older ones
+        result = None
         for r in records:
             if r.get("food_key") == food_key:
-                return dict(r)
+                result = dict(r)
+        return result
     except Exception:
         pass
     return None

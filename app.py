@@ -157,10 +157,20 @@ st.markdown('<div class="section-label">Alerts & Indicators</div>', unsafe_allow
 if alerts:
     icons = {"red": "🔴", "yellow": "🟡", "green": "🟢"}
     for a in alerts:
+        sources = a.get("sources", [])
+        sources_html = ""
+        if sources:
+            tags = "".join(
+                f'<span style="display:inline-block;background:rgba(0,0,0,.15);'
+                f'border-radius:4px;padding:1px 7px;font-size:.72em;margin:3px 3px 0 0;'
+                f'font-weight:500;white-space:nowrap">{s}</span>'
+                for s in sources
+            )
+            sources_html = f'<div style="margin-top:4px;line-height:1.6">{tags}</div>'
         st.markdown(
             f'<div class="alert-pill alert-{a["level"]}">'
             f'<span>{icons.get(a["level"], "")}</span>'
-            f'<span>{a["message"]}</span></div>',
+            f'<div><span>{a["message"]}</span>{sources_html}</div></div>',
             unsafe_allow_html=True,
         )
 else:
@@ -202,10 +212,16 @@ else:
 
         rows_html = ""
         for e in entries:
+            _fname = str(e.get("food_name", "")).lower()
+            _qty_g = float(e.get("quantity_g", 0))
+            if "egg" in _fname and _qty_g > 0:
+                _qty_label = f"{round(_qty_g / 60)} egg{'s' if round(_qty_g / 60) != 1 else ''}"
+            else:
+                _qty_label = f"{_qty_g:.0f}g"
             rows_html += (
                 f'<div class="food-item">'
                 f'<span class="fi-name">{str(e.get("food_name","")).title()} '
-                f'<span style="color:var(--text-muted);font-size:.85em">({float(e.get("quantity_g",0)):.0f}g)</span></span>'
+                f'<span style="color:var(--text-muted);font-size:.85em">({_qty_label})</span></span>'
                 f'<span class="fi-kcal">{float(e.get("calories",0) or 0):.0f} kcal</span>'
                 f'<span class="fi-macro">P {float(e.get("protein",0) or 0):.1f}g</span>'
                 f'<span class="fi-macro">C {float(e.get("carbs",0) or 0):.1f}g</span>'

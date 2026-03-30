@@ -161,23 +161,38 @@ with tab_list:
                 'color:#4CAF50;border-radius:20px;font-size:.72em;font-weight:700;margin-left:8px">Active</span>'
                 if is_active else ""
             )
-            st.markdown(f"""
-<div style="padding:14px 16px;background:var(--surface-2);border-radius:10px;border:1px solid {'#4CAF50' if is_active else 'var(--border)'};margin-bottom:10px">
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-    <div>
-      <span style="font-size:1em;font-weight:700">{p['name']}</span>
-      {active_badge}
-    </div>
-    <div style="font-size:.75em;color:var(--text-muted)">{p.get('gender','').capitalize()} · {p.get('weight_kg')}kg · {p.get('height_cm')}cm · Age {p.get('age')}</div>
-  </div>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-    <div style="font-size:.78em;color:var(--text-muted)">🏋️ Training: <span style="color:var(--text);font-weight:600">{t['calories']} kcal</span> · P {t['protein']}g · C {t['carbs']}g · F {t['fat']}g</div>
-    <div style="font-size:.78em;color:var(--text-muted)">🛋️ Rest: <span style="color:var(--text);font-weight:600">{r['calories']} kcal</span> · P {r['protein']}g · C {r['carbs']}g · F {r['fat']}g</div>
-  </div>
-</div>
-""", unsafe_allow_html=True)
-            if not is_active:
-                if st.button("🗑️ Delete", key=f"del_profile_{p['id']}", help=f"Delete {p['name']}"):
+            name_html = (
+                f'<span style="font-size:1em;font-weight:700">{p["name"]}</span>'
+                f'{active_badge}'
+            )
+            demographics = (
+                f'{p.get("gender","").capitalize()} · {p.get("weight_kg")}kg'
+                f' · {p.get("height_cm")}cm · Age {p.get("age")}'
+            )
+            border_color = "#4CAF50" if is_active else "var(--border)"
+            card_html = (
+                f'<div style="padding:14px 16px;background:var(--surface-2);border-radius:10px;'
+                f'border:1px solid {border_color};margin-bottom:10px">'
+                f'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
+                f'<div>{name_html}</div>'
+                f'<div style="font-size:.75em;color:var(--text-muted)">{demographics}</div>'
+                f'</div>'
+                f'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'
+                f'<div style="font-size:.78em;color:var(--text-muted)">🏋️ Training: '
+                f'<span style="color:var(--text);font-weight:600">{t["calories"]} kcal</span>'
+                f' · P {t["protein"]}g · C {t["carbs"]}g · F {t["fat"]}g</div>'
+                f'<div style="font-size:.78em;color:var(--text-muted)">🛋️ Rest: '
+                f'<span style="color:var(--text);font-weight:600">{r["calories"]} kcal</span>'
+                f' · P {r["protein"]}g · C {r["carbs"]}g · F {r["fat"]}g</div>'
+                f'</div></div>'
+            )
+            if is_active:
+                st.markdown(card_html, unsafe_allow_html=True)
+            else:
+                info_col, btn_col = st.columns([11, 1])
+                info_col.markdown(card_html, unsafe_allow_html=True)
+                btn_col.markdown("<br>", unsafe_allow_html=True)
+                if btn_col.button("🗑️", key=f"del_profile_{p['id']}", help=f"Delete {p['name']}", use_container_width=True):
                     if delete_profile(p["id"]):
                         st.toast(f"Deleted profile '{p['name']}'", icon="🗑️")
                         st.rerun()
